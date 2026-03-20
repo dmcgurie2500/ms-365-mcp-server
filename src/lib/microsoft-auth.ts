@@ -71,6 +71,8 @@ export async function exchangeCodeForToken(
     params.append('code_verifier', codeVerifier);
   }
 
+  console.error('[DEBUG] exchangeCodeForToken params:', params.toString().replace(/client_secret=[^&]+/, 'client_secret=REDACTED').replace(/code=[^&]+/, 'code=REDACTED'));
+  console.error('[DEBUG] exchangeCodeForToken URL:', `${cloudEndpoints.authority}/${tenantId}/oauth2/v2.0/token`);
   const response = await fetch(`${cloudEndpoints.authority}/${tenantId}/oauth2/v2.0/token`, {
     method: 'POST',
     headers: {
@@ -79,8 +81,10 @@ export async function exchangeCodeForToken(
     body: params,
   });
 
+  console.error('[DEBUG] exchangeCodeForToken response status:', response.status);
   if (!response.ok) {
     const error = await response.text();
+    console.error('[DEBUG] exchangeCodeForToken FAILED:', response.status, error);
     logger.error(`Failed to exchange code for token: ${error}`);
     throw new Error(`Failed to exchange code for token: ${error}`);
   }
