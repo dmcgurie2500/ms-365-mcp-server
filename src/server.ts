@@ -283,6 +283,8 @@ class MicrosoftGraphServer {
 
       // Token exchange endpoint
       app.post('/token', async (req, res) => {
+        console.error('[DEBUG] POST /token received. body keys:', Object.keys(req.body || {}));
+        console.error('[DEBUG] POST /token grant_type:', req.body?.grant_type);
         try {
           // Log token endpoint call (redact sensitive data)
           logger.info('Token endpoint called', {
@@ -327,6 +329,13 @@ class MicrosoftGraphServer {
               hasClientSecret: !!clientSecret,
             });
 
+            console.error('[DEBUG] /token handler: calling exchangeCodeForToken');
+            console.error('[DEBUG] redirect_uri:', body.redirect_uri);
+            console.error('[DEBUG] has_code:', !!body.code);
+            console.error('[DEBUG] has_code_verifier:', !!body.code_verifier);
+            console.error('[DEBUG] clientId:', clientId);
+            console.error('[DEBUG] hasClientSecret:', !!clientSecret);
+            console.error('[DEBUG] tenantId:', tenantId);
             const result = await exchangeCodeForToken(
               body.code as string,
               body.redirect_uri as string,
@@ -364,6 +373,9 @@ class MicrosoftGraphServer {
             });
           }
         } catch (error) {
+          console.error('[DEBUG] Token endpoint CAUGHT ERROR:', error);
+          console.error('[DEBUG] Error message:', (error as Error).message);
+          console.error('[DEBUG] Error stack:', (error as Error).stack);
           logger.error('Token endpoint error:', error);
           res.status(500).json({
             error: 'server_error',
@@ -495,6 +507,14 @@ class MicrosoftGraphServer {
         });
       } else {
         app.listen(port, () => {
+            // Keep-alive: ping self every 30s to prevent Railway scale-to-zero
+            const selfUrl = process.env.RAILWAY_PUBLIC_DOMAIN
+              ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+              : `http://localhost:${port}`;
+            setInterval(() => {
+              fetch(selfUrl).catch(() => {});
+            }, 30000);
+            console.error('[DEBUG] Keep-alive ping started for', selfUrl);
           logger.info(`Server listening on all interfaces (0.0.0.0:${port})`);
           logger.info(`  - MCP endpoint: http://localhost:${port}/mcp`);
           logger.info(`  - OAuth endpoints: http://localhost:${port}/auth/*`);
