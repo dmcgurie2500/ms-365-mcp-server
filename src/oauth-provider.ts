@@ -6,57 +6,54 @@ import type { AppSecrets } from './secrets.js';
 import { getCloudEndpoints } from './cloud-config.js';
 
 export class MicrosoftOAuthProvider extends ProxyOAuthServerProvider {
-    private authManager: AuthManager;
+      private authManager: AuthManager;
 
   constructor(authManager: AuthManager, secrets: AppSecrets) {
-        const tenantId = secrets.tenantId || 'common';
-        const clientId = secrets.clientId;
-        const cloudEndpoints = getCloudEndpoints(secrets.cloudType);
+          const tenantId = secrets.tenantId || 'common';
+          const clientId = secrets.clientId;
+          const cloudEndpoints = getCloudEndpoints(secrets.cloudType);
 
-      super({
-              endpoints: {
-                        authorizationUrl: `${cloudEndpoints.authority}/${tenantId}/oauth2/v2.0/authorize`,
-                        tokenUrl: `${cloudEndpoints.authority}/${tenantId}/oauth2/v2.0/token`,
-                        revocationUrl: `${cloudEndpoints.authority}/${tenantId}/oauth2/v2.0/logout`,
-              },
-              verifyAccessToken: async (token: string): Promise<AuthInfo> => {
-                        try {
-                                    const response = await fetch(`${cloudEndpoints.graphApi}/v1.0/me`, {
-                                                  headers: {
-                                                                  Authorization: `Bearer ${token}`,
-                                                  },
-                                    });
+        super({
+                  endpoints: {
+                              authorizationUrl: `${cloudEndpoints.authority}/${tenantId}/oauth2/v2.0/authorize`,
+                              tokenUrl: `${cloudEndpoints.authority}/${tenantId}/oauth2/v2.0/token`,
+                              revocationUrl: `${cloudEndpoints.authority}/${tenantId}/oauth2/v2.0/logout`,
+                  },
+                  verifyAccessToken: async (token: string): Promise<AuthInfo> => {
+                              try {
+                                            const response = await fetch(`${cloudEndpoints.graphApi}/v1.0/me`, {
+                                                            headers: {
+                                                                              Authorization: `Bearer ${token}`,
+                                                            },
+                                            });
 
-                          if (response.ok) {
-                                        const userData = await response.json();
-                                        logger.info(`OAuth token verified for user: ${userData.userPrincipalName}`);
+                                if (response.ok) {
+                                                const userData = await response.json();
+                                                logger.info(`OAuth token verified for user: ${userData.userPrincipalName}`);
 
-                                      await authManager.setOAuthToken(token);
+                                              await authManager.setOAuthToken(token);
 
-                                      return {
-                                                      token,
-                                                      clientId,
-                                                      scopes: [],
-                                      };
-                          } else {
-                                        throw new Error(`Token verification failed: ${response.status}`);
-                          }
-                        } catch (error) {
-                                    logger.error(`OAuth token verification error: ${error}`);
-                                    throw error;
-                        }
-              },
-              getClient: async (client_id: string) => {
-                        const redirectUris = process.env.MCP_OAUTH_REDIRECT_URIS
-                          ? process.env.MCP_OAUTH_REDIRECT_URIS.split(',').map(u => u.trim())
-                                    : ['http://localhost'];
-                        return {
-                                    client_id,
-                                    redirect_uris: redirectUris,
-                        };
-              },
-      });
+                                              return {
+                                                                token,
+                                                                clientId,
+                                                                scopes: [],
+                                              };
+                                } else {
+                                                throw new Error(`Token verification failed: ${response.status}`);
+                                }
+                              } catch (error) {
+                                            logger.error(`OAuth token verification error: ${error}`);
+                                            throw error;
+                              }
+                  },
+                  getClient: async (client_id: string) => {
+                              return {
+                                            client_id,
+                                            redirect_uris: ['http://localhost/callback', 'http://127.0.0.1/callback'],
+                              };
+                  },
+        });
 
-      this.authManager = authManager;
+        this.authManager = authManager;
   }
 }
