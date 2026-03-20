@@ -340,7 +340,7 @@ class MicrosoftGraphServer {
               body.code as string,
               body.redirect_uri as string,
               clientId,
-              clientSecret,
+              undefined, // Public client (AADSTS700025) - do NOT send client_secret
               tenantId,
               body.code_verifier as string | undefined,
               this.secrets!.cloudType
@@ -361,7 +361,7 @@ class MicrosoftGraphServer {
             const result = await refreshAccessToken(
               body.refresh_token as string,
               clientId,
-              clientSecret,
+              undefined, // Public client (AADSTS700025) - do NOT send client_secret
               tenantId,
               this.secrets!.cloudType
             );
