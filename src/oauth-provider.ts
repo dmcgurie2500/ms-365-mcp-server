@@ -34,22 +34,13 @@ export class MicrosoftOAuthProvider extends ProxyOAuthServerProvider {
       verifyAccessToken: async (token: string): Promise<AuthInfo> => {
         try {
           const response = await fetch(`${cloudEndpoints.graphApi}/v1.0/me`, {
-            headers: {
-              Authorization: `Bearer ${token}`,
-            },
+            headers: { Authorization: `Bearer ${token}` },
           });
-
           if (response.ok) {
             const userData = await response.json();
             logger.info(`OAuth token verified for user: ${userData.userPrincipalName}`);
-
             await authManager.setOAuthToken(token);
-
-            return {
-              token,
-              clientId,
-              scopes: [],
-            };
+            return { token, clientId, scopes: [] };
           } else {
             throw new Error(`Token verification failed: ${response.status}`);
           }
@@ -61,14 +52,11 @@ export class MicrosoftOAuthProvider extends ProxyOAuthServerProvider {
       getClient: async (client_id: string) => {
         const stored = registeredClients.get(client_id);
         if (stored) {
-          logger.info(`getClient: returning stored client for ${client_id}`);
+          console.error('[DEBUG] getClient: stored client', client_id, 'redirect_uris:', JSON.stringify(stored.redirect_uris));
           return stored;
         }
-        logger.info(`getClient: no stored client for ${client_id}, returning defaults`);
-        return {
-          client_id,
-          redirect_uris: ['http://localhost/callback', 'http://127.0.0.1/callback'],
-        };
+        console.error('[DEBUG] getClient: no stored client for', client_id);
+        return { client_id, redirect_uris: ['http://localhost/callback', 'http://127.0.0.1/callback'] };
       },
     });
 
@@ -76,15 +64,15 @@ export class MicrosoftOAuthProvider extends ProxyOAuthServerProvider {
     this.azureClientId = clientId;
     this.azureClientSecret = clientSecret;
     this.msTokenUrl = tokenUrl;
+    console.error('[DEBUG] MicrosoftOAuthProvider init. clientId:', clientId, 'tokenUrl:', tokenUrl);
   }
 
-  // Override clientsStore to intercept dynamic registration and store client data
   get clientsStore(): OAuthRegisteredClientsStore {
     const parentStore = super.clientsStore;
     return {
       getClient: parentStore.getClient,
       registerClient: async (client: OAuthClientInformationFull): Promise<OAuthClientInformationFull> => {
-        logger.info(`registerClient: storing client ${client.client_id} with redirect_uris: ${JSON.stringify(client.redirect_uris)}`);
+        console.error('[DEBUG] registerClient:', client.client_id, 'redirect_uris:', JSON.stringify(client.redirect_uris));
         const registeredClient: OAuthClientInformationFull = {
           ...client,
           client_id: client.client_id || `mcp-client-${Date.now()}`,
@@ -92,23 +80,20 @@ export class MicrosoftOAuthProvider extends ProxyOAuthServerProvider {
           client_id_issued_at: Math.floor(Date.now() / 1000),
         };
         registeredClients.set(registeredClient.client_id, registeredClient);
-        logger.info(`registerClient: stored client ${registeredClient.client_id} successfully`);
+        console.error('[DEBUG] registerClient stored:', registeredClient.client_id);
         return registeredClient;
       },
     };
   }
 
-  // Override authorize to use Azure app client_id when redirecting to Microsoft
   async authorize(client: OAuthClientInformationFull, params: AuthorizationParams, res: Response): Promise<void> {
-    logger.info(`authorize: swapping MCP client_id ${client.client_id} with Azure client_id ${this.azureClientId}`);
-    const azureClient = {
-      ...client,
-      client_id: this.azureClientId,
-    };
+    console.error('[DEBUG] authorize called. MCP client_id:', client.client_id, 'Azure client_id:', this.azureClientId);
+    console.error('[DEBUG] authorize params.redirectUri:', params.redirectUri);
+    console.error('[DEBUG] authorize params.codeChallenge:', params.codeChallenge);
+    const azureClient = { ...client, client_id: this.azureClientId };
     return super.authorize(azureClient, params, res);
   }
 
-  // Override exchangeAuthorizationCode to use Azure app credentials with Microsoft token endpoint
   async exchangeAuthorizationCode(
     client: OAuthClientInformationFull,
     authorizationCode: string,
@@ -116,7 +101,11 @@ export class MicrosoftOAuthProvider extends ProxyOAuthServerProvider {
     redirectUri?: string,
     resource?: URL,
   ): Promise<OAuthTokens> {
-    logger.info(`exchangeAuthorizationCode: using Azure client_id ${this.azureClientId} instead of MCP client ${client.client_id}`);
+    console.error('[DEBUG] exchangeAuthorizationCode called');
+    console.error('[DEBUG] MCP client_id:', client.client_id, '-> Azure client_id:', this.azureClientId);
+    console.error('[DEBUG] redirectUri param:', redirectUri);
+    console.error('[DEBUG] codeVerifier present:', !!codeVerifier);
+    console.error('[DEBUG] authCode (first 20):', authorizationCode.substring(0, 20) + '...');
 
     const params = new URLSearchParams({
       grant_type: 'authorization_code',
@@ -129,6 +118,9 @@ export class MicrosoftOAuthProvider extends ProxyOAuthServerProvider {
     if (redirectUri) params.set('redirect_uri', redirectUri);
     if (resource) params.set('resource', resource.href);
 
+    console.error('[DEBUG] Token URL:', this.msTokenUrl);
+    console.error('[DEBUG] Token params:', params.toString().replace(/client_secret=[^&]+/, 'client_secret=REDACTED').replace(/code=[^&]+/, 'code=REDACTED'));
+
     const response = await fetch(this.msTokenUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -137,12 +129,12 @@ export class MicrosoftOAuthProvider extends ProxyOAuthServerProvider {
 
     if (!response.ok) {
       const errorBody = await response.text();
-      logger.error(`Token exchange failed: ${response.status} - ${errorBody}`);
+      console.error('[DEBUG] Token exchange FAILED:', response.status, errorBody);
       throw new Error(`Token exchange failed: ${response.status}`);
     }
 
     const data = await response.json();
-    logger.info('Token exchange successful');
+    console.error('[DEBUG] Token exchange SUCCESS. token_type:', data.token_type, 'expires_in:', data.expires_in);
     return {
       access_token: data.access_token,
       token_type: data.token_type || 'Bearer',
@@ -152,14 +144,13 @@ export class MicrosoftOAuthProvider extends ProxyOAuthServerProvider {
     };
   }
 
-  // Override exchangeRefreshToken to use Azure app credentials
   async exchangeRefreshToken(
     client: OAuthClientInformationFull,
     refreshToken: string,
     scopes?: string[],
     resource?: URL,
   ): Promise<OAuthTokens> {
-    logger.info(`exchangeRefreshToken: using Azure client_id ${this.azureClientId}`);
+    console.error('[DEBUG] exchangeRefreshToken. Azure client_id:', this.azureClientId);
 
     const params = new URLSearchParams({
       grant_type: 'refresh_token',
@@ -179,12 +170,12 @@ export class MicrosoftOAuthProvider extends ProxyOAuthServerProvider {
 
     if (!response.ok) {
       const errorBody = await response.text();
-      logger.error(`Refresh token exchange failed: ${response.status} - ${errorBody}`);
+      console.error('[DEBUG] Refresh token FAILED:', response.status, errorBody);
       throw new Error(`Refresh token exchange failed: ${response.status}`);
     }
 
     const data = await response.json();
-    logger.info('Refresh token exchange successful');
+    console.error('[DEBUG] Refresh token SUCCESS');
     return {
       access_token: data.access_token,
       token_type: data.token_type || 'Bearer',
