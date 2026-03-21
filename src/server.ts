@@ -329,18 +329,23 @@ class MicrosoftGraphServer {
               hasClientSecret: !!clientSecret,
             });
 
+            // If the client sent a client_secret in the token request, use it (confidential client).
+            // Otherwise pass undefined so PKCE-only public clients still work.
+            const effectiveSecret = body.client_secret ? (body.client_secret as string) : undefined;
+
             console.error('[DEBUG] /token handler: calling exchangeCodeForToken');
             console.error('[DEBUG] redirect_uri:', body.redirect_uri);
             console.error('[DEBUG] has_code:', !!body.code);
             console.error('[DEBUG] has_code_verifier:', !!body.code_verifier);
             console.error('[DEBUG] clientId:', clientId);
             console.error('[DEBUG] hasClientSecret:', !!clientSecret);
+            console.error('[DEBUG] effectiveSecret from body:', !!effectiveSecret);
             console.error('[DEBUG] tenantId:', tenantId);
             const result = await exchangeCodeForToken(
               body.code as string,
               body.redirect_uri as string,
               clientId,
-              undefined, // Public client (AADSTS700025) - do NOT send client_secret
+              effectiveSecret,
               tenantId,
               body.code_verifier as string | undefined,
               this.secrets!.cloudType
@@ -351,9 +356,13 @@ class MicrosoftGraphServer {
             const clientId = this.secrets!.clientId;
             const clientSecret = this.secrets?.clientSecret;
 
+            // If the client sent a client_secret in the token request, use it (confidential client).
+            // Otherwise pass undefined so PKCE-only public clients still work.
+            const effectiveRefreshSecret = body.client_secret ? (body.client_secret as string) : undefined;
+
             // Log whether using public or confidential client
-            if (clientSecret) {
-              logger.info('Refresh endpoint: Using confidential client with client_secret');
+            if (effectiveRefreshSecret) {
+              logger.info('Refresh endpoint: Using confidential client with client_secret from request body');
             } else {
               logger.info('Refresh endpoint: Using public client without client_secret');
             }
@@ -361,7 +370,7 @@ class MicrosoftGraphServer {
             const result = await refreshAccessToken(
               body.refresh_token as string,
               clientId,
-              undefined, // Public client (AADSTS700025) - do NOT send client_secret
+              effectiveRefreshSecret,
               tenantId,
               this.secrets!.cloudType
             );
